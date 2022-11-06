@@ -125,6 +125,11 @@ want to use version 2.23.0 or the kreuzwerker/docker provider. Pinning to specif
 versions is typically a good practice in case breaking changes are added to future releases.
 
 ```hcl
+/* The terraform settings 
+ * Things like backend configuration, required providers,
+ * etc. go in here
+ * https://developer.hashicorp.com/terraform/language/settings
+ */
 terraform {
   required_providers {
     docker = {
@@ -140,9 +145,16 @@ tell terraform how to configure your providers. In our case, we want
 terraform to submit the docker api calls to our unix socket at `unix:///var/run/docker.sock`.
 
 ```hcl
+/* The docker provider settings 
+ * In our case, we will use the docker unix socket
+ * as our host. Full configuration parameters
+ * are here
+ * https://registry.terraform.io/providers/kreuzwerker/docker/latest/docs
+ */
 provider "docker" {
   host = "unix:///var/run/docker.sock"
 }
+
 ```
 
 Up to this point, terraform knows how to configure itself and the single provider
@@ -154,6 +166,9 @@ different methods described [here](https://developer.hashicorp.com/terraform/lan
 for `num_server_apps`.
 
 ```hcl
+/* Our input variables. Note that we added constraints on our
+ * variables using validation blocks.
+ */
 variable "external_port" {
   default     = 8080
   type        = number
@@ -184,6 +199,17 @@ be literals, however, we are using terraform to compute them and save them so we
 reference them later:
 
 ```hcl
+/* Local variables to be used throughout the terraform code
+ * Note that the nginx_base_path will expand to the current
+ * directory that terraform is running in, plus ../docker.
+ * server_block_arr uses a for loop to create an array 
+ * of strings based on the name of our nginx container names.
+ * For example:
+ * server_block_arr = [
+ *    "server nginx1",
+ *    "server nginx2"
+ * ]
+ */
 locals {
   nginx_base_path  = "${path.module}/../docker"
   server_block_arr = [for d in docker_container.nginx_apps : "server ${d.name}"]
@@ -217,6 +243,57 @@ Now, we can finally create actual resources from our provider!
 
 Let's start by building our docker images:
 
+```hcl
+/* Building our docker images with the docker_image resource
+ * Note that we use another for loop in our triggers. We loop 
+ * through each file in our nginx_base_path directory using the 
+ * fileset method. We then create a sha1 sum of each file in there
+ * using the filesha1, and join the array into a string using the 
+ * join function.
+ */
+resource "docker_image" "nginx_app" {
+  name = "nginxapp"
+
+  triggers = {
+    dir_sha1 = sha1(
+      join(
+        "",
+        [for f in fileset(local.nginx_base_path, "*") : filesha1("${local.nginx_base_path}/${f}")]
+      )
+    )
+  }
+
+  build {
+    path = local.nginx_base_path
+    tag  = ["nginxapp:latest"]
+    build_arg = {
+      TEMPLATE_FILE : "nginx.app.conf.tmpl"
+    }
+  }
+}
+
+resource "docker_image" "nginx_lb" {
+  name = "nginxlb"
+
+  triggers = {
+    dir_sha1 = sha1(
+      join(
+        "",
+        [for f in fileset(local.nginx_base_path, "*") : filesha1("${local.nginx_base_path}/${f}")]
+      )
+    )
+  }
+
+  build {
+    path = local.nginx_base_path
+    tag  = ["nginxlb:latest"]
+    build_arg = {
+      TEMPLATE_FILE : "nginx.lb.conf.tmpl"
+    }
+  }
+}
+```
+
 You'll see we are building two docker images, one for our nginx applications and one
 for the load balancer. They look extrememly similar to each other, but have varying
 build arguments (remember that from the docker section?). If we look at the `nginx_app`
@@ -233,8 +310,41 @@ each time.
 With our images created, we can now start deploying them and their supporting infrastructure.
 First, we create a docker network using the `docker_network` resource.
 
+```hcl
+/* A docker network for each of our containers
+ * to use. This way, they can all reach eachother
+ * by hostname and it wont interfere with any
+ * other containers on the system and nothing
+ * will interfere with them.
+ */
+resource "docker_network" "nginx_network" {
+  name = "nginx"
+}
+```
 
-Then we deploy our nginx applications using the `docker_container` resource. Note that the
+Then we deploy our nginx applications using the `docker_container` resource:
+```hcl
+/* Now we deploy our docker containers. Note that the 
+ * nginx_apps resource uses a count object. So if we
+ * set num_server_apps to 8, we will get 8 containers
+ * named nginx-0, nginx-1, ...., nginx-7. Each of 
+ * them will then each have a unique message like
+ * HELLO WORLD FROM 2.
+ */
+resource "docker_container" "nginx_apps" {
+  count = var.num_server_apps
+  name  = "nginx-${count.index}"
+  image = docker_image.nginx_app.image_id
+  env   = ["MESSAGE=HELLO WORLD FROM ${count.index}"]
+
+  networks_advanced {
+    name = docker_network.nginx_network.id
+  }
+}
+
+```
+
+ Note that the
 `count` attribute tells terraform to "Make a variable number of these". So, if our user set 
 `num_server_apps` to 7, we would get 7 different docker containers deployed. Each container
 is going to get a unique name of `nginx-<index>` where `<index>` ranges from 0 to
@@ -244,6 +354,26 @@ our `server_block_arr` grew dynamically before. It was looping over each
 then attached the containers to the docker network we created before using terraform interpolation.
 
 Finally, we can create the load balancer in a very similar fashion:
+
+```hcl
+resource "docker_container" "nginx_lb" {
+  name  = "nginx-lb"
+  image = docker_image.nginx_lb.image_id
+
+  env = [
+    "SERVERS=${join(";", local.server_block_arr)}",
+  ]
+
+  ports {
+    external = var.external_port
+    internal = "80"
+  }
+
+  networks_advanced {
+    name = docker_network.nginx_network.id
+  }
+}
+```
 
 Note that we are again using interpolation for the image id to use as well as the network id.
 
