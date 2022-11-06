@@ -12,10 +12,10 @@ provider "docker" {
 }
 
 locals {
-  nginx_app_path = "${path.module}/../docker/nginx-app"
-  nginx_lb_path  = "${path.module}/../docker/nginx-loadbalancer"
+  nginx_base_path = "${path.module}/../docker"
 }
 
+# Building the docker nginx app image
 resource "docker_image" "nginx_app" {
   name = "nginxapp"
 
@@ -23,17 +23,21 @@ resource "docker_image" "nginx_app" {
     dir_sha1 = sha1(
       join(
         "",
-        [for f in fileset(local.nginx_app_path, "*") : filesha1("${local.nginx_app_path}/${f}")]
+        [for f in fileset(local.nginx_base_path, "*") : filesha1("${local.nginx_base_path}/${f}")]
       )
     )
   }
 
   build {
-    path = local.nginx_app_path
+    path = local.nginx_base_path
     tag  = ["nginxapp:latest"]
+    build_arg = {
+      TEMPLATE_FILE : "nginx.app.conf.tmpl"
+    }
   }
 }
 
+# Building the docker nginx load balancer image
 resource "docker_image" "nginx_lb" {
   name = "nginxlb"
 
@@ -41,17 +45,21 @@ resource "docker_image" "nginx_lb" {
     dir_sha1 = sha1(
       join(
         "",
-        [for f in fileset(local.nginx_lb_path, "*") : filesha1("${local.nginx_lb_path}/${f}")]
+        [for f in fileset(local.nginx_base_path, "*") : filesha1("${local.nginx_base_path}/${f}")]
       )
     )
   }
 
   build {
-    path = local.nginx_lb_path
+    path = local.nginx_base_path
     tag  = ["nginxlb:latest"]
+    build_arg = {
+      TEMPLATE_FILE : "nginx.lb.conf.tmpl"
+    }
   }
 }
 
+# Building the docker nginx load balancer image
 resource "docker_network" "nginx_network" {
   name = "nginx"
 }
