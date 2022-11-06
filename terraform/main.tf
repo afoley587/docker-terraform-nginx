@@ -30,7 +30,8 @@ variable "external_port" {
   type        = number
   description = "The external port that our load balancer will listen on. Must be between 8000 and 12000."
   validation {
-    condition = 8000 < var.external_port && var.external_port < 12000
+    condition     = 8000 < var.external_port && var.external_port < 12000
+    error_message = "Port must be a number between 8000 and 12000."
   }
 }
 
@@ -39,7 +40,8 @@ variable "num_server_apps" {
   type        = number
   description = "The number of nginx apps to spin up. Must be between 1 and 10 (exclusive)."
   validation {
-    condition = 0 < var.external_port && var.external_port < 10
+    condition     = 0 < var.num_server_apps && var.num_server_apps < 10
+    error_message = "Number of apps must be a number between 1 and 10."
   }
 }
 

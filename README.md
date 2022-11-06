@@ -25,7 +25,7 @@ So lets get started.
 
 # Project Layout
 
-First, all code in this blog post is hosted [here](). The directory
+First, all code in this blog post is hosted [here](https://github.com/afoley587/docker-terraform-nginx). The directory
 layout is pretty simple, anything docker related goes in the `docker`
 directory, and anything related to terraform goes in the `terraform` directory.
 
@@ -174,7 +174,8 @@ variable "external_port" {
   type        = number
   description = "The external port that our load balancer will listen on. Must be between 8000 and 12000."
   validation {
-    condition = 8000 < var.external_port && var.external_port < 12000
+    condition     = 8000 < var.external_port && var.external_port < 12000
+    error_message = "Port must be a number between 8000 and 12000."
   }
 }
 
@@ -183,7 +184,8 @@ variable "num_server_apps" {
   type        = number
   description = "The number of nginx apps to spin up. Must be between 1 and 10 (exclusive)."
   validation {
-    condition = 0 < var.external_port && var.external_port < 10
+    condition     = 0 < var.num_server_apps && var.num_server_apps < 10
+    error_message = "Number of apps must be a number between 1 and 10."
   }
 }
 ```
@@ -382,18 +384,51 @@ Note that we are again using interpolation for the image id to use as well as th
 We can run this pretty simply and easily all through terraform:
 
 ```shell
-cd terraform
-terraform init
-terraform apply
+prompt> cd terraform
+prompt> terraform init
+prompt> terraform apply
 ```
+
+We can verify that our containers are deployed by running a `docker ps`:
+
+```shell
+prompt> docker ps
+CONTAINER ID   IMAGE          COMMAND            CREATED          STATUS          PORTS                  NAMES
+b768e06e815a   6cd099260405   "/entrypoint.sh"   25 seconds ago   Up 25 seconds   0.0.0.0:8080->80/tcp   nginx-lb
+4effc029ccca   4b0e0dda4582   "/entrypoint.sh"   26 seconds ago   Up 26 seconds   80/tcp                 nginx-0
+26340ad1f612   4b0e0dda4582   "/entrypoint.sh"   26 seconds ago   Up 26 seconds   80/tcp                 nginx-3
+735538040cd7   4b0e0dda4582   "/entrypoint.sh"   26 seconds ago   Up 25 seconds   80/tcp                 nginx-1
+893161b4f95b   4b0e0dda4582   "/entrypoint.sh"   26 seconds ago   Up 25 seconds   80/tcp                 nginx-2
+022aa19cb5a6   4b0e0dda4582   "/entrypoint.sh"   26 seconds ago   Up 25 seconds   80/tcp                 nginx-4
+```
+
+Note that we now have `num_server_apps` nginx apps, and one load balancer listening on `external_port`!
 
 And we can test out our load balancing:
 
 ```shell
 PORT=8080 # Set to same as the var.external_port
-while true; do
-  curl http://localhost:PORT;
+for i in {1..10}; do
+  curl http://localhost:${PORT};
   sleep 1;
   echo ""
 done
 ```
+
+And our output would look something like:
+
+```shell
+HELLO WORLD FROM 0
+HELLO WORLD FROM 1
+HELLO WORLD FROM 2
+HELLO WORLD FROM 3
+HELLO WORLD FROM 4
+HELLO WORLD FROM 0
+HELLO WORLD FROM 1
+HELLO WORLD FROM 2
+HELLO WORLD FROM 3
+HELLO WORLD FROM 4
+```
+
+# References
+* [GitHub Repo](https://github.com/afoley587/docker-terraform-nginx)
