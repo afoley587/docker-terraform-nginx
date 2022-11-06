@@ -12,7 +12,9 @@ provider "docker" {
 }
 
 locals {
-  nginx_base_path = "${path.module}/../docker"
+  nginx_base_path  = "${path.module}/../docker"
+  num_server_apps  = 5
+  server_block_arr = [for d in docker_container.nginx_apps : "server ${d.name}"]
 }
 
 # Building the docker nginx app image
@@ -64,20 +66,11 @@ resource "docker_network" "nginx_network" {
   name = "nginx"
 }
 
-resource "docker_container" "nginx_hello_world" {
-  name  = "nginx-hello-world"
+resource "docker_container" "nginx_apps" {
+  count = local.num_server_apps
+  name  = "nginx-${count.index}"
   image = docker_image.nginx_app.image_id
-  env   = ["MESSAGE=HELLO WORLD"]
-
-  networks_advanced {
-    name = docker_network.nginx_network.id
-  }
-}
-
-resource "docker_container" "nginx_goodbye_world" {
-  name  = "nginx-goodbye-world"
-  image = docker_image.nginx_app.image_id
-  env   = ["MESSAGE=GOODBYE WORLD"]
+  env   = ["MESSAGE=HELLO WORLD FROM ${count.index}"]
 
   networks_advanced {
     name = docker_network.nginx_network.id
@@ -89,8 +82,7 @@ resource "docker_container" "nginx_lb" {
   image = docker_image.nginx_lb.image_id
 
   env = [
-    "SERVER_ONE=${docker_container.nginx_hello_world.name}",
-    "SERVER_TWO=${docker_container.nginx_goodbye_world.name}"
+    "SERVERS=${join(";", local.server_block_arr)}",
   ]
 
   ports {

@@ -10,8 +10,7 @@ events {
 
 http {
     upstream myapp1 {
-        server ${SERVER_ONE};
-        server ${SERVER_TWO};
+        ${SERVERS};
     }
 
     server {
