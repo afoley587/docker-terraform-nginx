@@ -43,11 +43,25 @@ the load balancer and the apps. Let's walk through it line-by-line.
 
 The file, in its entirety is:
 ```shell
+# Pull image from docker hub
 FROM nginx:1.23.2-alpine
+
+# Create a build argument that will dictate
+# which template we copy into the container
+# (the app one or the load balancer one)
 ARG TEMPLATE_FILE
+
+# Copy the template in
 COPY ./$TEMPLATE_FILE /nginx.conf.template
+
+# Copy the entrypoint in
 COPY ./entrypoint.sh /entrypoint.sh
+
+# Set entrypoint as runnable
 RUN chmod +x /entrypoint.sh
+
+# Set entrypoint.sh as entrypoint command for
+# the container
 ENTRYPOINT ["/entrypoint.sh"]
 ```
 
@@ -59,3 +73,11 @@ So, we:
 * Copy a shell script from our machine into the docker image
 * Mark the shell script as runnable
 * Mark the shell script as the entrypoint to the container
+
+By having the build argument, we can have one dockerfile for both our
+applications and our load balancer. Note that this isn't a typical practice, 
+but allows us to keep this post slightly more brief.
+
+I invite you to snoop around the template files and the shell script on your own time!
+
+# Terraform
