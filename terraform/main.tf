@@ -22,22 +22,6 @@ provider "docker" {
   host = "unix:///var/run/docker.sock"
 }
 
-/* Local variables to be used throughout the terraform code
- * Note that the nginx_base_path will expand to the current
- * directory that terraform is running in, plus ../docker.
- * server_block_arr uses a for loop to create an array 
- * of strings based on the name of our nginx container names.
- * For example:
- * server_block_arr = [
- *    "server nginx1",
- *    "server nginx2"
- * ]
- */
-locals {
-  nginx_base_path  = "${path.module}/../docker"
-  server_block_arr = [for d in docker_container.nginx_apps : "server ${d.name}"]
-}
-
 /* Our input variables. Note that we added constraints on our
  * variables using validation blocks.
  */
@@ -59,6 +43,21 @@ variable "num_server_apps" {
   }
 }
 
+/* Local variables to be used throughout the terraform code
+ * Note that the nginx_base_path will expand to the current
+ * directory that terraform is running in, plus ../docker.
+ * server_block_arr uses a for loop to create an array 
+ * of strings based on the name of our nginx container names.
+ * For example:
+ * server_block_arr = [
+ *    "server nginx1",
+ *    "server nginx2"
+ * ]
+ */
+locals {
+  nginx_base_path  = "${path.module}/../docker"
+  server_block_arr = [for d in docker_container.nginx_apps : "server ${d.name}"]
+}
 
 /* Building our docker images with the docker_image resource
  * Note that we use another for loop in our triggers. We loop 
@@ -88,7 +87,6 @@ resource "docker_image" "nginx_app" {
   }
 }
 
-# Building the docker nginx load balancer image
 resource "docker_image" "nginx_lb" {
   name = "nginxlb"
 
